@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.client;
 
+import com.facebook.presto.spi.ErrorCode;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
@@ -38,6 +39,7 @@ public class FailureInfo
     private final List<FailureInfo> suppressed;
     private final List<String> stack;
     private final ErrorLocation errorLocation;
+    private final ErrorCode errorCode;
 
     @JsonCreator
     public FailureInfo(
@@ -46,7 +48,8 @@ public class FailureInfo
             @JsonProperty("cause") FailureInfo cause,
             @JsonProperty("suppressed") List<FailureInfo> suppressed,
             @JsonProperty("stack") List<String> stack,
-            @JsonProperty("errorLocation") @Nullable ErrorLocation errorLocation)
+            @JsonProperty("errorLocation") @Nullable ErrorLocation errorLocation,
+            @JsonProperty("errorCode") @Nullable ErrorCode errorCode)
     {
         checkNotNull(type, "type is null");
         checkNotNull(suppressed, "suppressed is null");
@@ -58,14 +61,12 @@ public class FailureInfo
         this.suppressed = ImmutableList.copyOf(suppressed);
         this.stack = ImmutableList.copyOf(stack);
         this.errorLocation = errorLocation;
+        this.errorCode = errorCode;
     }
 
     @NotNull
     @JsonProperty
-    public String getType()
-    {
-        return type;
-    }
+    public String getType() { return type; }
 
     @Nullable
     @JsonProperty
@@ -97,10 +98,11 @@ public class FailureInfo
 
     @Nullable
     @JsonProperty
-    public ErrorLocation getErrorLocation()
-    {
-        return errorLocation;
-    }
+    public ErrorLocation getErrorLocation() { return errorLocation; }
+
+    @Nullable
+    @JsonProperty
+    public ErrorCode getCode() { return errorCode; }
 
     public RuntimeException toException()
     {

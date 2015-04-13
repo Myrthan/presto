@@ -122,7 +122,7 @@ public class ExecutionFailureInfo
                 .map(ExecutionFailureInfo::toFailureInfo)
                 .collect(toImmutableList());
 
-        return new FailureInfo(type, message, cause == null ? null : cause.toFailureInfo(), suppressed, stack, errorLocation);
+        return new FailureInfo(type, message, cause == null ? null : cause.toFailureInfo(), suppressed, stack, errorLocation, errorCode);
     }
 
     public RuntimeException toException()

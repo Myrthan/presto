@@ -65,7 +65,8 @@ public final class Failures
             errorCode = ((Failure) failure).getErrorCode();
         }
 
-        return new ExecutionFailureInfo(type,
+        return new ExecutionFailureInfo(
+                type,
                 failure.getMessage(),
                 toFailure(failure.getCause()),
                 toFailures(asList(failure.getSuppressed())),
