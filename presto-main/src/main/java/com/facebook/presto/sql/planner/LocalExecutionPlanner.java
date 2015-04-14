@@ -18,6 +18,7 @@ import com.facebook.presto.block.BlockUtils;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.index.IndexManager;
 import com.facebook.presto.metadata.ColumnHandle;
+import com.facebook.presto.metadata.FunctionInfo;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.operator.AggregationOperator.AggregationOperatorFactory;
@@ -65,6 +66,7 @@ import com.facebook.presto.operator.index.IndexJoinLookupStats;
 import com.facebook.presto.operator.index.IndexLookupSourceSupplier;
 import com.facebook.presto.operator.index.IndexSourceOperator;
 import com.facebook.presto.spi.ConnectorIndex;
+import com.facebook.presto.operator.window.FrameInfo;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordSet;
@@ -103,6 +105,7 @@ import com.facebook.presto.sql.planner.plan.UnionNode;
 import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
+import com.facebook.presto.sql.planner.plan.WindowNode.Frame;
 import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.sql.relational.SqlToRowExpressionTranslator;
 import com.facebook.presto.sql.tree.BooleanLiteral;
@@ -505,11 +508,12 @@ public class LocalExecutionPlanner
 
             Optional<Integer> frameStartChannel = Optional.empty();
             Optional<Integer> frameEndChannel = Optional.empty();
-            if (node.getFrame().getStartValue().isPresent()) {
-                frameStartChannel = Optional.of(source.getLayout().get(node.getFrame().getStartValue().get()));
+            Frame frame = node.getFrame();
+            if (frame.getStartValue().isPresent()) {
+                frameStartChannel = Optional.of(source.getLayout().get(frame.getStartValue().get()));
             }
-            if (node.getFrame().getEndValue().isPresent()) {
-                frameEndChannel = Optional.of(source.getLayout().get(node.getFrame().getEndValue().get()));
+            if (frame.getEndValue().isPresent()) {
+                frameEndChannel = Optional.of(source.getLayout().get(frame.getEndValue().get()));
             }
 
             ImmutableList.Builder<Integer> outputChannels = ImmutableList.builder();
@@ -527,7 +531,9 @@ public class LocalExecutionPlanner
                 }
                 Symbol symbol = entry.getKey();
                 Signature signature = node.getSignatures().get(symbol);
-                windowFunctionsBuilder.add(metadata.getExactFunction(signature).bindWindowFunction(arguments.build()));
+                FunctionInfo functionInfo = metadata.getExactFunction(signature);
+                Type type = metadata.getType(functionInfo.getReturnType());
+                windowFunctionsBuilder.add(functionInfo.bindWindowFunction(type, arguments.build()));
                 windowFunctionOutputSymbolsBuilder.add(symbol);
             }
 
@@ -555,9 +561,7 @@ public class LocalExecutionPlanner
                     partitionChannels,
                     sortChannels,
                     sortOrder,
-                    node.getFrame().getType(),
-                    node.getFrame().getStartType(), frameStartChannel,
-                    node.getFrame().getEndType(), frameEndChannel,
+                    new FrameInfo(frame.getType(), frame.getStartType(), frameStartChannel, frame.getEndType(), frameEndChannel),
                     1_000_000);
 
             return new PhysicalOperation(operatorFactory, outputMappings.build(), source);
@@ -789,13 +793,13 @@ public class LocalExecutionPlanner
                     sourceTypes,
                     concat(singleton(rewrittenFilter), rewrittenProjections));
 
-            RowExpression traslatedFilter = SqlToRowExpressionTranslator.translate(rewrittenFilter, expressionTypes, metadata, session, true);
+            RowExpression translatedFilter = SqlToRowExpressionTranslator.translate(rewrittenFilter, expressionTypes, metadata, session, true);
             List<RowExpression> translatedProjections = SqlToRowExpressionTranslator.translate(rewrittenProjections, expressionTypes, metadata, session, true);
 
             try {
                 if (columns != null) {
-                    CursorProcessor cursorProcessor = compiler.compileCursorProcessor(traslatedFilter, translatedProjections, sourceNode.getId());
-                    PageProcessor pageProcessor = compiler.compilePageProcessor(traslatedFilter, translatedProjections);
+                    CursorProcessor cursorProcessor = compiler.compileCursorProcessor(translatedFilter, translatedProjections, sourceNode.getId());
+                    PageProcessor pageProcessor = compiler.compilePageProcessor(translatedFilter, translatedProjections);
 
                     SourceOperatorFactory operatorFactory = new ScanFilterAndProjectOperator.ScanFilterAndProjectOperatorFactory(
                             context.getNextOperatorId(),
@@ -809,7 +813,7 @@ public class LocalExecutionPlanner
                     return new PhysicalOperation(operatorFactory, outputMappings);
                 }
                 else {
-                    PageProcessor processor = compiler.compilePageProcessor(traslatedFilter, translatedProjections);
+                    PageProcessor processor = compiler.compilePageProcessor(translatedFilter, translatedProjections);
 
                     OperatorFactory operatorFactory = new FilterAndProjectOperator.FilterAndProjectOperatorFactory(
                             context.getNextOperatorId(),

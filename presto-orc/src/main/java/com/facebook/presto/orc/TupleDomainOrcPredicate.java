@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.orc;
 
-import com.facebook.presto.hive.$internal.com.google.common.annotations.VisibleForTesting;
 import com.facebook.presto.orc.metadata.BooleanStatistics;
 import com.facebook.presto.orc.metadata.ColumnStatistics;
 import com.facebook.presto.orc.metadata.RangeStatistics;
@@ -23,12 +22,12 @@ import com.facebook.presto.spi.SortedRangeSet;
 import com.facebook.presto.spi.TupleDomain;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Primitives;
 import io.airlift.slice.Slice;
-import io.airlift.slice.Slices;
 
 import java.util.List;
 import java.util.Map;
@@ -115,7 +114,7 @@ public class TupleDomainOrcPredicate<C>
             return createDomain(boxedJavaType, hasNullValue, columnStatistics.getDoubleStatistics());
         }
         else if (boxedJavaType == Slice.class && columnStatistics.getStringStatistics() != null) {
-            return createDomain(boxedJavaType, hasNullValue, columnStatistics.getStringStatistics(), Slices::utf8Slice);
+            return createDomain(boxedJavaType, hasNullValue, columnStatistics.getStringStatistics());
         }
         return Domain.create(SortedRangeSet.all(boxedJavaType), hasNullValue);
     }

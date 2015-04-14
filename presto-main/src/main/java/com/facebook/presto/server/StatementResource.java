@@ -14,24 +14,10 @@
 package com.facebook.presto.server;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.client.ClientTypeSignature;
+import com.facebook.presto.client.*;
 import com.facebook.presto.client.Column;
-import com.facebook.presto.client.FailureInfo;
-import com.facebook.presto.client.QueryError;
-import com.facebook.presto.client.QueryResults;
 import com.facebook.presto.client.StageStats;
-import com.facebook.presto.client.StatementStats;
-import com.facebook.presto.execution.BufferInfo;
-import com.facebook.presto.execution.QueryId;
-import com.facebook.presto.execution.QueryInfo;
-import com.facebook.presto.execution.QueryManager;
-import com.facebook.presto.execution.QueryState;
-import com.facebook.presto.execution.QueryStats;
-import com.facebook.presto.execution.SharedBufferInfo;
-import com.facebook.presto.execution.StageInfo;
-import com.facebook.presto.execution.StageState;
-import com.facebook.presto.execution.TaskId;
-import com.facebook.presto.execution.TaskInfo;
+import com.facebook.presto.execution.*;
 import com.facebook.presto.operator.ExchangeClient;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
@@ -41,13 +27,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
-import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Ordering;
-import com.google.common.collect.Sets;
+import com.google.common.collect.*;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -57,31 +37,16 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.DELETE;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.ResponseBuilder;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriInfo;
-
 import java.io.Closeable;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -620,7 +585,7 @@ public class StatementResource
                 log.warn("Query %s in state %s has no failure info", queryInfo.getQueryId(), state);
                 failure = toFailure(new RuntimeException(format("Query is %s (reason unknown)", state))).toFailureInfo();
             }
-            return new QueryError(failure.getMessage(), null, 0, failure.getErrorLocation(), failure);
+            return new QueryError(failure.getMessage(), failure.getType(), null, failure.getCode(), failure.getErrorLocation(), failure);
         }
 
         private static class RowIterable

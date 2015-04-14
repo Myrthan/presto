@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.client;
 
+import com.facebook.presto.spi.ErrorCode;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -26,20 +27,23 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 public class QueryError
 {
     private final String message;
+    private final String type;
     private final String sqlState;
-    private final int errorCode;
+    private final ErrorCode errorCode;
     private final ErrorLocation errorLocation;
     private final FailureInfo failureInfo;
 
     @JsonCreator
     public QueryError(
             @JsonProperty("message") String message,
+            @JsonProperty("type") String type,
             @JsonProperty("sqlState") String sqlState,
-            @JsonProperty("errorCode") int errorCode,
+            @JsonProperty("errorCode") ErrorCode errorCode,
             @JsonProperty("errorLocation") ErrorLocation errorLocation,
             @JsonProperty("failureInfo") FailureInfo failureInfo)
     {
         this.message = message;
+        this.type = type;
         this.sqlState = sqlState;
         this.errorCode = errorCode;
         this.errorLocation = errorLocation;
@@ -48,9 +52,13 @@ public class QueryError
 
     @NotNull
     @JsonProperty
-    public String getMessage()
+    public String getMessage() { return message; }
+
+    @NotNull
+    @JsonProperty
+    public String getType()
     {
-        return message;
+        return type;
     }
 
     @Nullable
@@ -60,8 +68,9 @@ public class QueryError
         return sqlState;
     }
 
+    @Nullable
     @JsonProperty
-    public int getErrorCode()
+    public ErrorCode getErrorCode()
     {
         return errorCode;
     }
@@ -85,6 +94,7 @@ public class QueryError
     {
         return toStringHelper(this)
                 .add("message", message)
+                .add("type", type)
                 .add("sqlState", sqlState)
                 .add("errorCode", errorCode)
                 .add("errorLocation", errorLocation)
