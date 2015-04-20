@@ -18,7 +18,6 @@ import com.facebook.presto.block.BlockUtils;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.index.IndexManager;
 import com.facebook.presto.metadata.FunctionInfo;
-import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.operator.AggregationOperator.AggregationOperatorFactory;
@@ -66,13 +65,13 @@ import com.facebook.presto.operator.index.IndexJoinLookupStats;
 import com.facebook.presto.operator.index.IndexLookupSourceSupplier;
 import com.facebook.presto.operator.index.IndexSourceOperator;
 import com.facebook.presto.operator.window.FrameInfo;
+import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorIndex;
 import com.facebook.presto.operator.window.FrameInfo;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordSet;
 import com.facebook.presto.spi.block.SortOrder;
-import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.split.MappedRecordSet;
 import com.facebook.presto.split.PageSinkManager;
@@ -114,7 +113,6 @@ import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.QualifiedNameReference;
-import com.google.common.base.Functions;
 import com.google.common.base.Predicates;
 import com.google.common.base.Supplier;
 import com.google.common.collect.FluentIterable;
@@ -131,14 +129,12 @@ import com.google.common.collect.Ordering;
 import com.google.common.collect.SetMultimap;
 import com.google.common.primitives.Ints;
 import io.airlift.log.Logger;
-import io.airlift.slice.Slice;
 import io.airlift.units.DataSize;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -154,6 +150,7 @@ import static com.facebook.presto.operator.TableCommitOperator.TableCommitter;
 import static com.facebook.presto.operator.TableWriterOperator.TableWriterOperatorFactory;
 import static com.facebook.presto.operator.UnnestOperator.UnnestOperatorFactory;
 import static com.facebook.presto.spi.StandardErrorCode.COMPILER_ERROR;
+import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypesFromInput;
 import static com.facebook.presto.sql.planner.plan.TableWriterNode.CreateHandle;
@@ -239,7 +236,7 @@ public class LocalExecutionPlanner
         return new LocalExecutionPlan(context.getDriverFactories());
     }
 
-    private PhysicalOperation enforceLayout(List<Symbol> outputLayout, LocalExecutionPlanContext context, PhysicalOperation physicalOperation)
+    private static PhysicalOperation enforceLayout(List<Symbol> outputLayout, LocalExecutionPlanContext context, PhysicalOperation physicalOperation)
     {
         // are the symbols of the source in the same order as the sink expects?
         boolean projectionMatchesOutput = physicalOperation.getLayout()
@@ -409,7 +406,7 @@ public class LocalExecutionPlanner
         @Override
         public PhysicalOperation visitRowNumber(RowNumberNode node, LocalExecutionPlanContext context)
         {
-            final PhysicalOperation source = node.getSource().accept(this, context);
+            PhysicalOperation source = node.getSource().accept(this, context);
 
             List<Symbol> partitionBySymbols = node.getPartitionBy();
             List<Integer> partitionChannels = getChannelsForSymbols(partitionBySymbols, source.getLayout());
@@ -445,9 +442,9 @@ public class LocalExecutionPlanner
         }
 
         @Override
-        public PhysicalOperation visitTopNRowNumber(final TopNRowNumberNode node, LocalExecutionPlanContext context)
+        public PhysicalOperation visitTopNRowNumber(TopNRowNumberNode node, LocalExecutionPlanContext context)
         {
-            final PhysicalOperation source = node.getSource().accept(this, context);
+            PhysicalOperation source = node.getSource().accept(this, context);
 
             List<Symbol> partitionBySymbols = node.getPartitionBy();
             List<Integer> partitionChannels = getChannelsForSymbols(partitionBySymbols, source.getLayout());
@@ -494,9 +491,9 @@ public class LocalExecutionPlanner
         }
 
         @Override
-        public PhysicalOperation visitWindow(final WindowNode node, LocalExecutionPlanContext context)
+        public PhysicalOperation visitWindow(WindowNode node, LocalExecutionPlanContext context)
         {
-            final PhysicalOperation source = node.getSource().accept(this, context);
+            PhysicalOperation source = node.getSource().accept(this, context);
 
             List<Symbol> partitionBySymbols = node.getPartitionBy();
             List<Symbol> orderBySymbols = node.getOrderBy();
@@ -925,7 +922,7 @@ public class LocalExecutionPlanner
                 outputTypes.add(type);
             }
 
-            if (node.getRows().size() == 0) {
+            if (node.getRows().isEmpty()) {
                 OperatorFactory operatorFactory = new ValuesOperatorFactory(context.getNextOperatorId(), outputTypes, ImmutableList.of());
                 return new PhysicalOperation(operatorFactory, makeLayout(node));
             }
@@ -966,7 +963,7 @@ public class LocalExecutionPlanner
             }
             Optional<Symbol> ordinalitySymbol = node.getOrdinalitySymbol();
             Optional<Type> ordinalityType = ordinalitySymbol.map(context.getTypes()::get);
-            ordinalityType.ifPresent(type -> checkState(type == BigintType.BIGINT, "Type of ordinalitySymbol must always be BIGINT."));
+            ordinalityType.ifPresent(type -> checkState(type.equals(BIGINT), "Type of ordinalitySymbol must always be BIGINT."));
 
             List<Integer> replicateChannels = getChannelsForSymbols(node.getReplicateSymbols(), source.getLayout());
             List<Integer> unnestChannels = getChannelsForSymbols(unnestSymbols, source.getLayout());
@@ -1035,8 +1032,8 @@ public class LocalExecutionPlanner
                 }
                 remappedProbeKeyChannelsBuilder.add(Iterables.getFirst(potentialProbeInputs, null));
             }
-            final List<Set<Integer>> overlappingFieldSets = overlappingFieldSetsBuilder.build();
-            final List<Integer> remappedProbeKeyChannels = remappedProbeKeyChannelsBuilder.build();
+            List<Set<Integer>> overlappingFieldSets = overlappingFieldSetsBuilder.build();
+            List<Integer> remappedProbeKeyChannels = remappedProbeKeyChannelsBuilder.build();
             Function<RecordSet, RecordSet> probeKeyNormalizer = recordSet -> {
                 if (!overlappingFieldSets.isEmpty()) {
                     recordSet = new FieldSetFilteringRecordSet(recordSet, overlappingFieldSets);
@@ -1117,7 +1114,7 @@ public class LocalExecutionPlanner
             Set<Integer> lookupSourceInputChannels = FluentIterable.from(node.getCriteria())
                     .filter(Predicates.compose(in(indexSymbolsNeededBySource), IndexJoinNode.EquiJoinClause::getIndex))
                     .transform(IndexJoinNode.EquiJoinClause::getProbe)
-                    .transform(Functions.forMap(probeKeyLayout))
+                    .transform(forMap(probeKeyLayout))
                     .toSet();
 
             Optional<DynamicTupleFilterFactory> dynamicTupleFilterFactory = Optional.empty();
@@ -1125,12 +1122,12 @@ public class LocalExecutionPlanner
                 int[] nonLookupInputChannels = Ints.toArray(FluentIterable.from(node.getCriteria())
                         .filter(Predicates.compose(not(in(indexSymbolsNeededBySource)), IndexJoinNode.EquiJoinClause::getIndex))
                         .transform(IndexJoinNode.EquiJoinClause::getProbe)
-                        .transform(Functions.forMap(probeKeyLayout))
+                        .transform(forMap(probeKeyLayout))
                         .toList());
                 int[] nonLookupOutputChannels = Ints.toArray(FluentIterable.from(node.getCriteria())
                         .filter(Predicates.compose(not(in(indexSymbolsNeededBySource)), IndexJoinNode.EquiJoinClause::getIndex))
                         .transform(IndexJoinNode.EquiJoinClause::getIndex)
-                        .transform(Functions.forMap(indexSource.getLayout()))
+                        .transform(forMap(indexSource.getLayout()))
                         .toList());
 
                 int filterOperatorId = indexContext.getNextOperatorId();
@@ -1464,7 +1461,7 @@ public class LocalExecutionPlanner
             return new PhysicalOperation(operatorFactory, outputMappings.build(), source);
         }
 
-        private PhysicalOperation planGroupByAggregation(AggregationNode node, final PhysicalOperation source, LocalExecutionPlanContext context)
+        private PhysicalOperation planGroupByAggregation(AggregationNode node, PhysicalOperation source, LocalExecutionPlanContext context)
         {
             List<Symbol> groupBySymbols = node.getGroupBy();
 
@@ -1526,23 +1523,18 @@ public class LocalExecutionPlanner
         return builder.build();
     }
 
-    private static TableCommitter createTableCommitter(final TableCommitNode node, final Metadata metadata)
+    private static TableCommitter createTableCommitter(TableCommitNode node, Metadata metadata)
     {
-        final WriterTarget target = node.getTarget();
-        return new TableCommitter()
-        {
-            @Override
-            public void commitTable(Collection<Slice> fragments)
-            {
-                if (target instanceof CreateHandle) {
-                    metadata.commitCreateTable(((CreateHandle) target).getHandle(), fragments);
-                }
-                else if (target instanceof InsertHandle) {
-                    metadata.commitInsert(((InsertHandle) target).getHandle(), fragments);
-                }
-                else {
-                    throw new AssertionError("Unhandled target type: " + target.getClass().getName());
-                }
+        WriterTarget target = node.getTarget();
+        return fragments -> {
+            if (target instanceof CreateHandle) {
+                metadata.commitCreateTable(((CreateHandle) target).getHandle(), fragments);
+            }
+            else if (target instanceof InsertHandle) {
+                metadata.commitInsert(((InsertHandle) target).getHandle(), fragments);
+            }
+            else {
+                throw new AssertionError("Unhandled target type: " + target.getClass().getName());
             }
         };
     }
@@ -1596,7 +1588,7 @@ public class LocalExecutionPlanner
         }
     }
 
-    private static Function<Symbol, Integer> channelGetter(final PhysicalOperation source)
+    private static Function<Symbol, Integer> channelGetter(PhysicalOperation source)
     {
         return input -> {
             checkArgument(source.getLayout().containsKey(input));
