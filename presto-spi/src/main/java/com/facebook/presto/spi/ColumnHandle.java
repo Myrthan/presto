@@ -11,24 +11,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.sql.planner;
+package com.facebook.presto.spi;
 
-import com.facebook.presto.spi.ConnectorColumnHandle;
-import com.facebook.presto.spi.ConnectorPartition;
-import com.facebook.presto.spi.TupleDomain;
-
-public class TestingPartition
-        implements ConnectorPartition
+public interface ColumnHandle
 {
-    @Override
-    public String getPartitionId()
-    {
-        return "partition";
-    }
-
-    @Override
-    public TupleDomain<ConnectorColumnHandle> getTupleDomain()
-    {
-        return TupleDomain.all();
-    }
 }

@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.client;
 
-import com.facebook.presto.spi.ErrorCode;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -27,38 +26,37 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 public class QueryError
 {
     private final String message;
-    private final String type;
     private final String sqlState;
-    private final ErrorCode errorCode;
+    private final int errorCode;
+    private final String errorName;
+    private final String errorType;
     private final ErrorLocation errorLocation;
     private final FailureInfo failureInfo;
 
     @JsonCreator
     public QueryError(
             @JsonProperty("message") String message,
-            @JsonProperty("type") String type,
             @JsonProperty("sqlState") String sqlState,
-            @JsonProperty("errorCode") ErrorCode errorCode,
+            @JsonProperty("errorCode") int errorCode,
+            @JsonProperty("errorName") String errorName,
+            @JsonProperty("errorType") String errorType,
             @JsonProperty("errorLocation") ErrorLocation errorLocation,
             @JsonProperty("failureInfo") FailureInfo failureInfo)
     {
         this.message = message;
-        this.type = type;
         this.sqlState = sqlState;
         this.errorCode = errorCode;
+        this.errorName = errorName;
+        this.errorType = errorType;
         this.errorLocation = errorLocation;
         this.failureInfo = failureInfo;
     }
 
     @NotNull
     @JsonProperty
-    public String getMessage() { return message; }
-
-    @NotNull
-    @JsonProperty
-    public String getType()
+    public String getMessage()
     {
-        return type;
+        return message;
     }
 
     @Nullable
@@ -68,11 +66,24 @@ public class QueryError
         return sqlState;
     }
 
-    @Nullable
     @JsonProperty
-    public ErrorCode getErrorCode()
+    public int getErrorCode()
     {
         return errorCode;
+    }
+
+    @NotNull
+    @JsonProperty
+    public String getErrorName()
+    {
+        return errorName;
+    }
+
+    @NotNull
+    @JsonProperty
+    public String getErrorType()
+    {
+        return errorType;
     }
 
     @Nullable
@@ -94,9 +105,10 @@ public class QueryError
     {
         return toStringHelper(this)
                 .add("message", message)
-                .add("type", type)
                 .add("sqlState", sqlState)
                 .add("errorCode", errorCode)
+                .add("errorName", errorName)
+                .add("errorType", errorType)
                 .add("errorLocation", errorLocation)
                 .add("failureInfo", failureInfo)
                 .toString();

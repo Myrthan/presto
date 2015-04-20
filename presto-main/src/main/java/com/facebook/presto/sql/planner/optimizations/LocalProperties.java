@@ -11,24 +11,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.metadata;
+package com.facebook.presto.sql.planner.optimizations;
 
-import com.facebook.presto.spi.ConnectorColumnHandle;
-import com.facebook.presto.spi.TupleDomain;
+import com.facebook.presto.spi.GroupingProperty;
+import com.facebook.presto.spi.LocalProperty;
+import com.facebook.presto.sql.planner.Symbol;
+import com.google.common.collect.ImmutableList;
 
-public final class Util
+import java.util.Collection;
+import java.util.List;
+
+final class LocalProperties
 {
-    private Util()
+    private LocalProperties()
     {
     }
 
-    public static TupleDomain<ConnectorColumnHandle> toConnectorDomain(TupleDomain<ColumnHandle> domain)
+    public static List<LocalProperty<Symbol>> none()
     {
-        return domain.transform(ColumnHandle::getConnectorHandle);
+        return ImmutableList.of();
     }
 
-    public static TupleDomain<ColumnHandle> fromConnectorDomain(final String connectorId, TupleDomain<ConnectorColumnHandle> domain)
+    public static List<LocalProperty<Symbol>> grouped(Collection<Symbol> columns)
     {
-        return domain.transform(input -> new ColumnHandle(connectorId, input));
+        return ImmutableList.of(new GroupingProperty<>(columns));
     }
 }

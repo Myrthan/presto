@@ -203,54 +203,36 @@ public class OperatorContext
         return driverContext.getOperatorPreAllocatedMemory();
     }
 
-    public boolean reserveMemory(long bytes)
+    public void reserveMemory(long bytes)
     {
-        return reserveMemory(bytes, false);
-    }
-
-    public boolean reserveMemory(long bytes, boolean noFail)
-    {
+        driverContext.reserveMemory(bytes);
         long newReservation = memoryReservation.getAndAdd(bytes);
         if (newReservation > maxMemoryReservation) {
             memoryReservation.getAndAdd(-bytes);
-            if (!noFail) {
-                throw new ExceededMemoryLimitException(getMaxMemorySize());
-            }
-            return false;
+            throw new ExceededMemoryLimitException(getMaxMemorySize());
         }
-        boolean result = driverContext.reserveMemory(bytes);
-        if (!result) {
-            memoryReservation.getAndAdd(-bytes);
-            if (!noFail) {
-                throw new ExceededMemoryLimitException(getMaxMemorySize());
-            }
-        }
-        return result;
     }
 
     public void freeMemory(long bytes)
     {
+        checkArgument(bytes >= 0, "bytes is negative");
+        checkArgument(bytes <= memoryReservation.get(), "tried to free more memory than is reserved");
         driverContext.freeMemory(bytes);
         memoryReservation.getAndAdd(-bytes);
     }
 
-    public synchronized long setMemoryReservation(long newMemoryReservation)
-    {
-        return setMemoryReservation(newMemoryReservation, false);
-    }
-
-    public synchronized long setMemoryReservation(long newMemoryReservation, boolean noFail)
+    public synchronized void setMemoryReservation(long newMemoryReservation)
     {
         checkArgument(newMemoryReservation >= 0, "newMemoryReservation is negative");
 
         long delta = newMemoryReservation - memoryReservation.get();
 
-        // currently, operator memory is not be released
         if (delta > 0) {
-            reserveMemory(delta, noFail);
+            reserveMemory(delta);
         }
-
-        return memoryReservation.get();
+        else {
+            freeMemory(-delta);
+        }
     }
 
     public void setInfoSupplier(Supplier<Object> infoSupplier)

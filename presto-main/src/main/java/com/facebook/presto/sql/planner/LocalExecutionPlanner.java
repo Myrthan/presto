@@ -17,8 +17,8 @@ import com.facebook.presto.Session;
 import com.facebook.presto.block.BlockUtils;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.index.IndexManager;
-import com.facebook.presto.metadata.ColumnHandle;
 import com.facebook.presto.metadata.FunctionInfo;
+import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.operator.AggregationOperator.AggregationOperatorFactory;
@@ -65,6 +65,7 @@ import com.facebook.presto.operator.index.IndexBuildDriverFactoryProvider;
 import com.facebook.presto.operator.index.IndexJoinLookupStats;
 import com.facebook.presto.operator.index.IndexLookupSourceSupplier;
 import com.facebook.presto.operator.index.IndexSourceOperator;
+import com.facebook.presto.operator.window.FrameInfo;
 import com.facebook.presto.spi.ConnectorIndex;
 import com.facebook.presto.operator.window.FrameInfo;
 import com.facebook.presto.spi.PageBuilder;
@@ -487,7 +488,7 @@ public class LocalExecutionPlanner
                     node.getMaxRowCountPerPartition(),
                     node.isPartial(),
                     hashChannel,
-                    1_000_000);
+                    1000);
 
             return new PhysicalOperation(operatorFactory, makeLayout(node), source);
         }
@@ -559,8 +560,10 @@ public class LocalExecutionPlanner
                     outputChannels.build(),
                     windowFunctions,
                     partitionChannels,
+                    ImmutableList.of(),
                     sortChannels,
                     sortOrder,
+                    0,
                     new FrameInfo(frame.getType(), frame.getStartType(), frameStartChannel, frame.getEndType(), frameEndChannel),
                     1_000_000);
 
@@ -793,8 +796,10 @@ public class LocalExecutionPlanner
                     sourceTypes,
                     concat(singleton(rewrittenFilter), rewrittenProjections));
 
-            RowExpression translatedFilter = SqlToRowExpressionTranslator.translate(rewrittenFilter, expressionTypes, metadata, session, true);
-            List<RowExpression> translatedProjections = SqlToRowExpressionTranslator.translate(rewrittenProjections, expressionTypes, metadata, session, true);
+            RowExpression translatedFilter = toRowExpression(rewrittenFilter, expressionTypes);
+            List<RowExpression> translatedProjections = rewrittenProjections.stream()
+                    .map(expression -> toRowExpression(expression, expressionTypes))
+                    .collect(toImmutableList());
 
             try {
                 if (columns != null) {
@@ -880,6 +885,11 @@ public class LocalExecutionPlanner
                         toTypes(projectionFunctions));
                 return new PhysicalOperation(operatorFactory, outputMappings, source);
             }
+        }
+
+        private RowExpression toRowExpression(Expression expression, IdentityHashMap<Expression, Type> types)
+        {
+            return SqlToRowExpressionTranslator.translate(expression, types, metadata.getFunctionRegistry(), metadata.getTypeManager(), session, true);
         }
 
         private Map<Integer, Type> getInputTypes(Map<Symbol, Integer> layout, List<Type> types)

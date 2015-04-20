@@ -15,6 +15,8 @@ package com.facebook.presto.metadata;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.ColumnHandle;
+import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
@@ -27,6 +29,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public interface Metadata
 {
@@ -55,6 +58,12 @@ public interface Metadata
      */
     @NotNull
     Optional<TableHandle> getTableHandle(Session session, QualifiedTableName tableName);
+
+    @NotNull
+    List<TableLayoutResult> getLayouts(TableHandle tableHandle, Constraint<ColumnHandle> constraint, Optional<Set<ColumnHandle>> desiredColumns);
+
+    @NotNull
+    TableLayout getLayout(TableLayoutHandle handle);
 
     /**
      * Return the metadata for the specified table handle.

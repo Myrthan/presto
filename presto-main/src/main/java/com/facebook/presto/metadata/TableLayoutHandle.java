@@ -13,7 +13,7 @@
  */
 package com.facebook.presto.metadata;
 
-import com.facebook.presto.spi.ConnectorColumnHandle;
+import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -21,18 +21,21 @@ import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-public final class ColumnHandle
+public final class TableLayoutHandle
 {
     private final String connectorId;
-    private final ConnectorColumnHandle connectorHandle;
+    private final ConnectorTableLayoutHandle layout;
 
     @JsonCreator
-    public ColumnHandle(
+    public TableLayoutHandle(
             @JsonProperty("connectorId") String connectorId,
-            @JsonProperty("connectorHandle") ConnectorColumnHandle connectorHandle)
+            @JsonProperty("connectorHandle") ConnectorTableLayoutHandle layout)
     {
-        this.connectorId = checkNotNull(connectorId, "connectorId is null");
-        this.connectorHandle = checkNotNull(connectorHandle, "connectorHandle is null");
+        checkNotNull(connectorId, "connectorId is null");
+        checkNotNull(layout, "layout is null");
+
+        this.connectorId = connectorId;
+        this.layout = layout;
     }
 
     @JsonProperty
@@ -42,34 +45,28 @@ public final class ColumnHandle
     }
 
     @JsonProperty
-    public ConnectorColumnHandle getConnectorHandle()
+    public ConnectorTableLayoutHandle getConnectorHandle()
     {
-        return connectorHandle;
+        return layout;
+    }
+
+    @Override
+    public boolean equals(Object o)
+    {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        TableLayoutHandle that = (TableLayoutHandle) o;
+        return Objects.equals(connectorId, that.connectorId) &&
+                Objects.equals(layout, that.layout);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(connectorId, connectorHandle);
-    }
-
-    @Override
-    public boolean equals(Object obj)
-    {
-        if (this == obj) {
-            return true;
-        }
-        if (obj == null || getClass() != obj.getClass()) {
-            return false;
-        }
-        ColumnHandle other = (ColumnHandle) obj;
-        return Objects.equals(this.connectorId, other.connectorId) &&
-                Objects.equals(this.connectorHandle, other.connectorHandle);
-    }
-
-    @Override
-    public String toString()
-    {
-        return connectorId + ":" + connectorHandle;
+        return Objects.hash(connectorId, layout);
     }
 }

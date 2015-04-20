@@ -198,17 +198,15 @@ public class PipelineContext
         return taskContext.getOperatorPreAllocatedMemory();
     }
 
-    public synchronized boolean reserveMemory(long bytes)
+    public synchronized void reserveMemory(long bytes)
     {
-        boolean result = taskContext.reserveMemory(bytes);
-        if (result) {
-            memoryReservation.getAndAdd(bytes);
-        }
-        return result;
+        taskContext.reserveMemory(bytes);
+        memoryReservation.getAndAdd(bytes);
     }
 
     public synchronized void freeMemory(long bytes)
     {
+        checkArgument(bytes >= 0, "bytes is negative");
         checkArgument(bytes <= memoryReservation.get(), "tried to free more memory than is reserved");
         taskContext.freeMemory(bytes);
         memoryReservation.getAndAdd(-bytes);
