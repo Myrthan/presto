@@ -91,6 +91,15 @@ import static org.apache.http.HttpStatus.SC_NOT_FOUND;
 public class PrestoS3FileSystem
         extends FileSystem
 {
+    private static final Logger log = Logger.get(PrestoS3FileSystem.class);
+
+    private static final PrestoS3FileSystemStats STATS = new PrestoS3FileSystemStats();
+
+    public static PrestoS3FileSystemStats getFileSystemStats()
+    {
+        return STATS;
+    }
+
     public static final String S3_SSL_ENABLED = "presto.s3.ssl.enabled";
     public static final String S3_MAX_ERROR_RETRIES = "presto.s3.max-error-retries";
     public static final String S3_MAX_CLIENT_RETRIES = "presto.s3.max-client-retries";
@@ -104,12 +113,11 @@ public class PrestoS3FileSystem
     public static final String S3_MULTIPART_MIN_PART_SIZE = "presto.s3.multipart.min-part-size";
     public static final String S3_USE_INSTANCE_CREDENTIALS = "presto.s3.use-instance-credentials";
 
-    private static final Logger log = Logger.get(PrestoS3FileSystem.class);
-
     private static final DataSize BLOCK_SIZE = new DataSize(32, MEGABYTE);
     private static final DataSize MAX_SKIP_SIZE = new DataSize(1, MEGABYTE);
 
     private final TransferManagerConfiguration transferConfig = new TransferManagerConfiguration();
+
     private URI uri;
     private Path workingDirectory;
     private AmazonS3 s3;
@@ -180,6 +188,7 @@ public class PrestoS3FileSystem
     public FileStatus[] listStatus(Path path)
             throws IOException
     {
+        STATS.newListStatusCall();
         List<LocatedFileStatus> list = new ArrayList<>();
         RemoteIterator<LocatedFileStatus> iterator = listLocatedStatus(path);
         while (iterator.hasNext()) {
@@ -189,9 +198,9 @@ public class PrestoS3FileSystem
     }
 
     @Override
-    public RemoteIterator<LocatedFileStatus> listLocatedStatus(final Path path)
-            throws IOException
+    public RemoteIterator<LocatedFileStatus> listLocatedStatus(Path path)
     {
+        STATS.newListLocatedStatusCall();
         return new RemoteIterator<LocatedFileStatus>()
         {
             private final Iterator<LocatedFileStatus> iterator = listPrefix(path);
@@ -239,7 +248,7 @@ public class PrestoS3FileSystem
         if (metadata == null) {
             // check if this path is a directory
             Iterator<LocatedFileStatus> iterator = listPrefix(path);
-            if ((iterator != null) && iterator.hasNext()) {
+            if (iterator.hasNext()) {
                 return new FileStatus(0, true, 1, 0, 0, qualifiedPath(path));
             }
             throw new FileNotFoundException("File does not exist: " + path);
@@ -283,28 +292,24 @@ public class PrestoS3FileSystem
 
     @Override
     public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
-            throws IOException
     {
         throw new UnsupportedOperationException("append");
     }
 
     @Override
     public boolean rename(Path src, Path dst)
-            throws IOException
     {
         throw new UnsupportedOperationException("rename");
     }
 
     @Override
     public boolean delete(Path f, boolean recursive)
-            throws IOException
     {
         throw new UnsupportedOperationException("delete");
     }
 
     @Override
     public boolean mkdirs(Path f, FsPermission permission)
-            throws IOException
     {
         // no need to do anything for S3
         return true;
@@ -322,6 +327,7 @@ public class PrestoS3FileSystem
                 .withPrefix(key)
                 .withDelimiter("/");
 
+        STATS.newListObjectsCall();
         Iterator<ObjectListing> listings = new AbstractSequentialIterator<ObjectListing>(s3.listObjects(request))
         {
             @Override
@@ -374,7 +380,8 @@ public class PrestoS3FileSystem
      * This exception is for stopping retries for S3 calls that shouldn't be retried.
      * For example, "Caused by: com.amazonaws.services.s3.model.AmazonS3Exception: Forbidden (Service: Amazon S3; Status Code: 403 ..."
      */
-    private static class UnrecoverableS3OperationException extends Exception
+    private static class UnrecoverableS3OperationException
+            extends Exception
     {
         public UnrecoverableS3OperationException(Throwable cause)
         {
@@ -382,7 +389,7 @@ public class PrestoS3FileSystem
         }
     }
 
-    private ObjectMetadata getS3ObjectMetadata(final Path path)
+    private ObjectMetadata getS3ObjectMetadata(Path path)
             throws IOException
     {
         try {
@@ -392,6 +399,7 @@ public class PrestoS3FileSystem
                     .stopOn(InterruptedException.class, UnrecoverableS3OperationException.class)
                     .run("getS3ObjectMetadata", () -> {
                         try {
+                            STATS.newMetadataCall();
                             return s3.getObjectMetadata(uri.getHost(), keyFromPath(path));
                         }
                         catch (AmazonS3Exception e) {
@@ -485,7 +493,8 @@ public class PrestoS3FileSystem
 
         private boolean closed;
         private S3ObjectInputStream in;
-        private long position;
+        private long streamPosition;
+        private long nextReadPosition;
 
         public PrestoS3InputStream(AmazonS3 s3, String host, Path path, int maxClientRetry, Duration maxBackoffTime, Duration maxRetryTime)
         {
@@ -501,7 +510,6 @@ public class PrestoS3FileSystem
 
         @Override
         public void close()
-                throws IOException
         {
             closed = true;
             closeStream();
@@ -509,51 +517,29 @@ public class PrestoS3FileSystem
 
         @Override
         public void seek(long pos)
-                throws IOException
         {
             checkState(!closed, "already closed");
             checkArgument(pos >= 0, "position is negative: %s", pos);
 
-            if ((in != null) && (pos == position)) {
-                // already at specified position
-                return;
-            }
-
-            if ((in != null) && (pos > position)) {
-                // seeking forwards
-                long skip = pos - position;
-                if (skip <= max(in.available(), MAX_SKIP_SIZE.toBytes())) {
-                    // already buffered or seek is small enough
-                    if (in.skip(skip) == skip) {
-                        position = pos;
-                        return;
-                    }
-                }
-            }
-
-            // close the stream and open at desired position
-            position = pos;
-            closeStream();
-            openStream();
+            // this allows a seek beyond the end of the stream but the next read will fail
+            nextReadPosition = pos;
         }
 
         @Override
         public long getPos()
-                throws IOException
         {
-            return position;
+            return nextReadPosition;
         }
 
         @Override
         public int read()
-                throws IOException
         {
             // This stream is wrapped with BufferedInputStream, so this method should never be called
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public int read(final byte[] buffer, final int offset, final int length)
+        public int read(byte[] buffer, int offset, int length)
                 throws IOException
         {
             try {
@@ -562,7 +548,7 @@ public class PrestoS3FileSystem
                         .exponentialBackoff(new Duration(1, TimeUnit.SECONDS), maxBackoffTime, maxRetryTime, 2.0)
                         .stopOn(InterruptedException.class)
                         .run("readStream", () -> {
-                            openStream();
+                            seekStream();
                             try {
                                 return in.read(buffer, offset, length);
                             }
@@ -573,7 +559,8 @@ public class PrestoS3FileSystem
                         });
 
                 if (bytesRead != -1) {
-                    position += bytesRead;
+                    streamPosition += bytesRead;
+                    nextReadPosition += bytesRead;
                 }
                 return bytesRead;
             }
@@ -589,12 +576,47 @@ public class PrestoS3FileSystem
 
         @Override
         public boolean seekToNewSource(long targetPos)
-                throws IOException
         {
             return false;
         }
 
-        private S3Object getS3Object(final Path path, final long start)
+        private void seekStream()
+                throws IOException
+        {
+            if ((in != null) && (nextReadPosition == streamPosition)) {
+                // already at specified position
+                return;
+            }
+
+            if ((in != null) && (nextReadPosition > streamPosition)) {
+                // seeking forwards
+                long skip = nextReadPosition - streamPosition;
+                if (skip <= max(in.available(), MAX_SKIP_SIZE.toBytes())) {
+                    // already buffered or seek is small enough
+                    if (in.skip(skip) == skip) {
+                        streamPosition = nextReadPosition;
+                        return;
+                    }
+                }
+            }
+
+            // close the stream and open at desired position
+            streamPosition = nextReadPosition;
+            closeStream();
+            openStream();
+        }
+
+        private void openStream()
+                throws IOException
+        {
+            if (in == null) {
+                in = getS3Object(path, nextReadPosition).getObjectContent();
+                streamPosition = nextReadPosition;
+                STATS.connectionOpened();
+            }
+        }
+
+        private S3Object getS3Object(Path path, long start)
                 throws IOException
         {
             try {
@@ -624,16 +646,7 @@ public class PrestoS3FileSystem
             }
         }
 
-        private void openStream()
-                throws IOException
-        {
-            if (in == null) {
-                in = getS3Object(path, position).getObjectContent();
-            }
-        }
-
         private void closeStream()
-                throws IOException
         {
             if (in != null) {
                 try {
@@ -643,6 +656,7 @@ public class PrestoS3FileSystem
                     // thrown if the current thread is in the interrupted state
                 }
                 in = null;
+                STATS.connectionReleased();
             }
         }
     }
@@ -699,6 +713,7 @@ public class PrestoS3FileSystem
         {
             try {
                 log.debug("Starting upload for host: %s, key: %s, file: %s, size: %s", host, key, tempFile, tempFile.length());
+                STATS.uploadStarted();
                 Upload upload = transferManager.upload(host, key, tempFile);
 
                 if (log.isDebugEnabled()) {
@@ -706,18 +721,21 @@ public class PrestoS3FileSystem
                 }
 
                 upload.waitForCompletion();
+                STATS.uploadSuccessful();
                 log.debug("Completed upload for host: %s, key: %s", host, key);
             }
             catch (AmazonClientException e) {
+                STATS.uploadFailed();
                 throw new IOException(e);
             }
             catch (InterruptedException e) {
+                STATS.uploadFailed();
                 Thread.currentThread().interrupt();
                 throw new InterruptedIOException();
             }
         }
 
-        private ProgressListener createProgressListener(final Transfer transfer)
+        private ProgressListener createProgressListener(Transfer transfer)
         {
             return new ProgressListener()
             {
