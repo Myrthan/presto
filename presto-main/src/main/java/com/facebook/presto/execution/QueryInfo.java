@@ -177,10 +177,7 @@ public class QueryInfo
 
     @Nullable
     @JsonProperty
-    public FailureInfo getFailureInfo()
-    {
-        return failureInfo;
-    }
+    public FailureInfo getFailureInfo() { return failureInfo; }
 
     @Nullable
     @JsonProperty

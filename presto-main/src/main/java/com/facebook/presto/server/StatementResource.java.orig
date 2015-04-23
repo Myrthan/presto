@@ -14,7 +14,7 @@
 package com.facebook.presto.server;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.client.ClientTypeSignature;
+import com.facebook.presto.client.*;
 import com.facebook.presto.client.Column;
 import com.facebook.presto.client.StageStats;
 import com.facebook.presto.execution.*;
@@ -591,6 +591,9 @@ public class StatementResource
                 log.warn("Query %s in state %s has no failure info", queryInfo.getQueryId(), state);
                 failure = toFailure(new RuntimeException(format("Query is %s (reason unknown)", state))).toFailureInfo();
             }
+<<<<<<< HEAD
+            return new QueryError(failure.getMessage(), failure.getType(), null, failure.getCode(), failure.getErrorLocation(), failure);
+=======
 
             ErrorCode errorCode;
             if (queryInfo.getErrorCode() != null) {
@@ -608,6 +611,7 @@ public class StatementResource
                     toErrorType(errorCode.getCode()).toString(),
                     failure.getErrorLocation(),
                     failure);
+>>>>>>> be6815e2f4239c67011698739055eefff4cf1a75
         }
 
         private static class RowIterable
