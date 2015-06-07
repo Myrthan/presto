@@ -105,6 +105,10 @@ public final class TypeJsonUtils
             return Collections.unmodifiableList(list);
         }
 
+        if (type instanceof JsonType) {
+            int w = 2;
+        }
+
         Slice sliceValue = null;
         if (type.getJavaType() == Slice.class) {
             sliceValue = Slices.utf8Slice(parser.getValueAsString());
